@@ -39,7 +39,7 @@ def resolve_model(model: str) -> str:
     p = Path(model).expanduser()
     if p.exists():
         return str(p)
-    name = p.name                      # 'bge-m3' из 'D:/Models/bge-m3' и из 'BAAI/bge-m3'
+    name = p.name                      # 'bge-m3' из '/путь/к/bge-m3' и из 'BAAI/bge-m3'
     for base in (PROJECT_ROOT / "models", user_data_root() / APP_NAME / "models"):
         candidate = base / name
         if candidate.exists():

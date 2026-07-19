@@ -16,7 +16,8 @@
   `.\pb-gpu.ps1 search "запрос" --k 10 --json`. Обёртка использует venv с CUDA-torch.
 - Обычный `python -m paperbase <команда>` идёт на CPU (годится для `list`/`stats`/`bib`).
 - Windows PowerShell; рабочая папка — эта (`paperbase`). Модель эмбеддингов —
-  `BAAI/bge-m3`, локально в `D:/Models/bge-m3` (интернет не нужен).
+  `BAAI/bge-m3`; путь задаётся в `config.toml` (локальная папка — интернет не нужен,
+  или имя HF-хаба — скачается автоматически).
 - ⚠️ В `.venv` стоит CUDA-`torch` из локального колеса. **Не** запускай
   `pip install --upgrade` по requirements — перетрёт GPU-сборку на CPU. `torch` из
   `requirements.txt` намеренно убран; ставится отдельно (README, раздел GPU).

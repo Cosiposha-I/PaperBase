@@ -35,8 +35,8 @@ cd paperbase
 python -m venv .venv
 .venv\Scripts\activate
 # ВАЖНО: сначала поставить нужную сборку torch, потом остальное.
-# GPU (эта машина): pip install "D:\Programms\torch-2.11.0+cu128-cp312-cp312-win_amd64.whl"
-# или CPU:          pip install torch
+# GPU (NVIDIA): pip install torch --index-url https://download.pytorch.org/whl/cu121
+# CPU / macOS:  pip install torch   (на Apple Silicon сам использует MPS-ускоритель)
 pip install -r requirements.txt        # torch здесь НЕ указан — не перетирает GPU-сборку
 ```
 
@@ -45,43 +45,38 @@ pip install -r requirements.txt        # torch здесь НЕ указан — 
 > `sentence-transformers` увидит его и не подтянет CPU-версию. Dev-тесты:
 > `pip install -r requirements-dev.txt` (pytest).
 
-**Модель эмбеддингов** `BAAI/bge-m3` (~2.3 ГБ). На этой машине она скачана вручную
-в локальную папку `D:\Models\bge-m3`, и путь прописан в `config.toml`
-(`[embedding] model = "D:/Models/bge-m3"`) — интернет для работы не нужен. Для чистой
-установки на другой машине укажите `model = "BAAI/bge-m3"`, и модель скачается
-автоматически в кэш HuggingFace (`~/.cache/huggingface`) при первом запуске.
+**Модель эмбеддингов** `BAAI/bge-m3` (~2.3 ГБ). Можно указать имя HF-хаба
+(`model = "BAAI/bge-m3"` в `config.toml`) — тогда она скачается автоматически в кэш
+HuggingFace (`~/.cache/huggingface`) при первом запуске. Либо скачать вручную и
+указать путь к локальной папке (`model = "/путь/к/bge-m3"`) — тогда интернет для
+работы не нужен; `config.resolve_model()` также сам ищет папку `models/<имя>` рядом
+с программой.
 
-### Tesseract OCR (для сканов) — установлен
+### Tesseract OCR (для сканов) — опционально
 
-На этой машине **Tesseract 5.5.0 установлен** в `D:\Programms\Tesseract-OCR`, языки
-`eng` и `rus` присутствуют. Путь прописан в `config.toml`:
+Без Tesseract страницы без текстового слоя пропускаются, конвейер не падает.
+Установите (Windows — сборка UB Mannheim, macOS — `brew install tesseract`,
+Linux — `apt install tesseract-ocr`, языки `eng` и `rus`) и укажите путь при
+необходимости:
 
 ```toml
 [ocr]
 languages = "eng+rus"
-tesseract_cmd = "D:/Programms/Tesseract-OCR/tesseract.exe"
+tesseract_cmd = ""   # пусто — найдётся сам (PATH и типовые места установки)
 ```
 
-`python -m paperbase check` показывает строку `tesseract  доступен`. Страницы без
-текстового слоя теперь распознаются, а не пропускаются. Если переустановите
-Tesseract в другое место — поправьте `tesseract_cmd` (или оставьте пустым, если
-бинарник попал в PATH).
+`python -m paperbase check` показывает строку `tesseract  доступен`.
 
-### GPU (уже настроено)
+### GPU / ускоритель
 
-Глобальный torch — CPU-сборка. Чтобы не трогать глобальный ML-стек (Whisper, ASR,
-ComfyUI), CUDA-ускорение вынесено в **изолированный venv** `paperbase\.venv`:
-он создан с `--system-site-packages` (наследует все зависимости paperbase из
-глобального Python), а внутрь поставлен только `torch 2.11.0+cu128` из локального
-wheel — он перекрывает CPU-torch **только для paperbase**. Глобальное окружение не
-изменено.
-
-Как это было сделано (повторять не нужно, уже готово):
+Модуль `embed.py` сам выбирает ускоритель для `device = "auto"`: **CUDA** (NVIDIA) →
+**MPS** (Apple Silicon) → CPU. На Windows глобальный torch обычно CPU-сборки — чтобы
+не трогать остальной ML-стек, держите CUDA-torch в **изолированном venv**:
 
 ```powershell
 python -m venv --system-site-packages .venv
-.\.venv\Scripts\python.exe -m pip install --force-reinstall --no-deps `
-  "D:\Programms\torch-2.11.0+cu128-cp312-cp312-win_amd64.whl"
+.\.venv\Scripts\python.exe -m pip install --force-reinstall --no-deps torch `
+  --index-url https://download.pytorch.org/whl/cu121
 ```
 
 Запуск на GPU — через обёртку `pb-gpu.ps1` (подставляет python из venv):
@@ -105,12 +100,12 @@ python -m venv --system-site-packages .venv
 ## Команды
 
 ```powershell
-cd C:\Users\ASUS\Desktop\Биодизель\paperbase
+cd paperbase   # папка проекта
 
 # Индексация (папка по умолчанию — из config.toml; идемпотентно по sha256)
 python -m paperbase ingest                         # добавит только новые PDF
 python -m paperbase ingest --prune                 # + убрать записи удалённых файлов
-python -m paperbase ingest "D:\другая\папка" --reingest --no-crossref
+python -m paperbase ingest "путь\к\другой\папке" --reingest --no-crossref
 
 # Пересборка векторов из SQLite (без чтения PDF/CrossRef) — после смены модели
 # эмбеддингов или для восстановления индекса. Быстрее полного --reingest.
@@ -419,7 +414,7 @@ throttle: операция деструктивная. `--reingest` к тому 
 
 ```powershell
 schtasks /Create /SC WEEKLY /D SUN /TN "PaperBase Backup" /ST 20:00 ^
-  /TR "cmd /c cd /d C:\Users\ASUS\Desktop\Биодизель\paperbase && python -m paperbase backup"
+  /TR "cmd /c cd /d ПУТЬ_К_ПАПКЕ\paperbase && python -m paperbase backup"
 ```
 
 ## Принятые допущения
