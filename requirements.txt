@@ -1,0 +1,14 @@
+# torch намеренно НЕ указан здесь: на этой машине стоит CUDA-сборка
+# (torch 2.11.0+cu128 из локального колеса, см. README, раздел GPU).
+# Порядок установки на новой машине: сначала поставить нужную сборку torch
+# (CUDA-колесо или --index-url), ЗАТЕМ `pip install -r requirements.txt` — тогда
+# sentence-transformers увидит уже установленный torch и не подтянет CPU-версию.
+typer>=0.12
+PyMuPDF>=1.24
+pytesseract>=0.3.10
+Pillow>=10.0
+sentence-transformers>=2.7
+chromadb>=0.5
+openpyxl>=3.1
+requests>=2.31
+tqdm>=4.66

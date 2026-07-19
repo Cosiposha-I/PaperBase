@@ -1,0 +1,42 @@
+# ВНИМАНИЕ: в .gitignore комментарий возможен ТОЛЬКО с начала строки.
+# Комментарий в конце строки станет частью имени файла и правило не сработает.
+
+# --- Личные данные пользователя (НИКОГДА не коммитить) ---
+# config.toml — свои пути и почта для CrossRef (образец: config.example.toml)
+config.toml
+# corpora.json — список тем с путями к личным папкам статей
+corpora.json
+
+# --- Индексы корпусов и бэкапы (личное содержимое + вес) ---
+data/
+data-*/
+backups/
+*.db
+*.db-wal
+*.db-shm
+
+# --- Модель эмбеддингов (~2.2 ГБ) ---
+models/
+
+# --- Окружение Python ---
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+
+# --- Сгенерированные результаты ---
+# references.md — выгрузка списка литературы (команда bib)
+references.md
+# выдача батч-поиска
+*_out.json
+batch_search_out.json
+physchem_out.json
+
+# --- Electron / Node (появится на Этапе 3) ---
+node_modules/
+dist/
+
+# --- Прочее ---
+.DS_Store
+Thumbs.db

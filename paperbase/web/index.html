@@ -1,0 +1,296 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>PaperBase — читальный зал корпуса</title>
+<style>
+  :root{
+    --bg:#0f1216; --panel:#171b21; --panel2:#1e242c; --border:#2a323c;
+    --text:#e6e9ee; --muted:#9aa4b2; --accent:#5b9bd5; --accent2:#7bc47f;
+    --warn:#e0a458; --err:#e06c6c; --radius:10px;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--text);
+    font:15px/1.5 -apple-system,Segoe UI,Roboto,Arial,sans-serif}
+  a{color:var(--accent);text-decoration:none}
+  header{display:flex;align-items:center;gap:12px;padding:12px 20px;
+    background:var(--panel);border-bottom:1px solid var(--border);position:sticky;top:0;z-index:5}
+  header h1{font-size:17px;margin:0;font-weight:600}
+  header .sub{color:var(--muted);font-size:13px}
+  .dot{width:9px;height:9px;border-radius:50%;background:var(--muted);display:inline-block}
+  .dot.ok{background:var(--accent2)} .dot.warn{background:var(--warn)} .dot.err{background:var(--err)}
+  .wrap{display:grid;grid-template-columns:1fr 320px;gap:18px;padding:18px 20px;max-width:1400px;margin:0 auto}
+  @media(max-width:980px){.wrap{grid-template-columns:1fr}}
+  .searchbar{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:16px;align-items:flex-end}
+  .fld{display:flex;flex-direction:column;gap:2px}
+  .cap{font-size:11px;color:var(--muted);padding-left:2px}
+  .searchbar input,.searchbar select{background:var(--panel2);border:1px solid var(--border);
+    color:var(--text);border-radius:8px;padding:10px 12px;font-size:15px}
+  #q{flex:1;min-width:260px}
+  .num{width:70px} .yr{width:96px} .pf{width:150px}
+  button{background:var(--accent);color:#fff;border:none;border-radius:8px;padding:10px 16px;
+    font-size:14px;cursor:pointer;font-weight:500}
+  button:hover{filter:brightness(1.1)} button.ghost{background:var(--panel2);color:var(--text);border:1px solid var(--border)}
+  button.mini{padding:4px 9px;font-size:12px}
+  .hint{color:var(--muted);font-size:13px;margin-bottom:12px}
+  .card{background:var(--panel);border:1px solid var(--border);border-radius:var(--radius);
+    padding:14px 16px;margin-bottom:12px}
+  .hit .top{display:flex;justify-content:space-between;gap:10px;align-items:baseline;flex-wrap:wrap}
+  .hit .cite{font-weight:600}
+  .hit .src{color:var(--muted);font-size:13px}
+  .badge{background:var(--panel2);border:1px solid var(--border);border-radius:20px;
+    padding:1px 9px;font-size:12px;color:var(--muted)}
+  .score{color:var(--accent2);font-variant-numeric:tabular-nums}
+  .hit .text{margin:10px 0 8px;white-space:pre-wrap}
+  .hit .acts{display:flex;gap:6px;flex-wrap:wrap}
+  .side .card h3{margin:0 0 10px;font-size:14px;color:var(--muted);text-transform:uppercase;letter-spacing:.04em}
+  .stat{display:flex;justify-content:space-between;font-size:14px;padding:2px 0}
+  .doclist{max-height:340px;overflow:auto}
+  .doc{padding:7px 8px;border-radius:7px;cursor:pointer;font-size:13px}
+  .doc:hover{background:var(--panel2)} .doc .k{color:var(--accent)} .doc .t{color:var(--muted)}
+  /* Источник (drawer) */
+  #drawer{position:fixed;inset:0;background:rgba(0,0,0,.55);display:none;z-index:10}
+  #drawer.open{display:block}
+  .drawer-in{position:absolute;right:0;top:0;height:100%;width:min(1050px,96vw);
+    background:var(--bg);border-left:1px solid var(--border);display:flex;flex-direction:column}
+  .drawer-hd{display:flex;align-items:center;gap:12px;padding:12px 16px;border-bottom:1px solid var(--border);background:var(--panel)}
+  .drawer-hd .t{flex:1;font-weight:600}
+  .pager{display:flex;align-items:center;gap:8px}
+  .drawer-body{flex:1;display:grid;grid-template-columns:1fr 1fr;gap:0;overflow:hidden}
+  @media(max-width:800px){.drawer-body{grid-template-columns:1fr}}
+  .pane{overflow:auto;padding:16px}
+  .pane.text{white-space:pre-wrap;border-right:1px solid var(--border);font-size:14px;line-height:1.6}
+  .pane.img{background:#0a0c0f;display:flex;justify-content:center;align-items:flex-start}
+  .pane.img img{max-width:100%;height:auto;border:1px solid var(--border);border-radius:6px;background:#fff}
+  .empty{color:var(--muted);text-align:center;padding:40px}
+  .toast{position:fixed;bottom:18px;left:50%;transform:translateX(-50%);background:var(--panel2);
+    border:1px solid var(--border);padding:9px 16px;border-radius:8px;opacity:0;transition:.2s;z-index:20}
+  .toast.show{opacity:1}
+  .spin{color:var(--muted);padding:24px;text-align:center}
+</style>
+</head>
+<body>
+<header>
+  <h1>PaperBase</h1>
+  <span class="sub">читальный зал корпуса · поиск с привязкой к источнику</span>
+  <span style="flex:1"></span>
+  <span id="health" title="состояние базы"><span class="dot"></span> <span class="ht">проверка…</span></span>
+</header>
+
+<div class="wrap">
+  <main>
+    <div class="searchbar">
+      <input id="q" placeholder="Смысловой запрос (можно по-русски): напр. влияние температуры на выход биодизеля" autofocus>
+      <label class="fld" title="По смыслу — семантический поиск (top-K). По слову — все документы, где встречается слово.">
+        <span class="cap">режим</span>
+        <select id="mode" onchange="onMode()">
+          <option value="semantic">по смыслу</option>
+          <option value="keyword">по слову</option>
+        </select>
+      </label>
+      <label class="fld" id="kfld" title="Сколько фрагментов вернуть (ранжированы по релевантности). Меньше — точнее, больше — шире охват.">
+        <span class="cap">фрагментов (K)</span>
+        <input id="k" class="num" type="number" min="1" max="30" value="8">
+      </label>
+      <input id="ymin" class="yr" type="number" placeholder="год от">
+      <input id="ymax" class="yr" type="number" placeholder="год до">
+      <input id="paper" class="pf" placeholder="файл (glob)">
+      <button onclick="doSearch()">Искать</button>
+    </div>
+    <div class="hint">Инструмент только ищет и показывает источники. Ответы, обзоры и таблицы синтезирует Claude в чате — кнопка «Копировать для Claude» на каждом фрагменте.</div>
+    <div id="results"></div>
+  </main>
+
+  <aside class="side">
+    <div class="card">
+      <h3>Корпус</h3>
+      <div id="stats"><div class="spin">загрузка…</div></div>
+      <div style="margin-top:10px;display:flex;gap:6px">
+        <a href="/api/bib" download><button class="ghost mini">Скачать список литературы</button></a>
+      </div>
+    </div>
+    <div class="card">
+      <h3>Статьи</h3>
+      <div id="doclist" class="doclist"><div class="spin">загрузка…</div></div>
+    </div>
+  </aside>
+</div>
+
+<div id="drawer" onclick="if(event.target===this)closeDrawer()">
+  <div class="drawer-in">
+    <div class="drawer-hd">
+      <span class="t" id="dTitle"></span>
+      <div class="pager">
+        <button class="ghost mini" onclick="flip(-1)">◀</button>
+        <span id="dPage">стр. —</span>
+        <button class="ghost mini" onclick="flip(1)">▶</button>
+      </div>
+      <button class="ghost mini" onclick="closeDrawer()">✕</button>
+    </div>
+    <div class="drawer-body">
+      <div class="pane text" id="dText"></div>
+      <div class="pane img"><img id="dImg" alt="страница PDF"
+        onerror="this.style.display='none'" onload="this.style.display=''"></div>
+    </div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+const $ = s => document.querySelector(s);
+let cur = {ref:null, page:1, min:1, max:1};
+
+function toast(msg){const t=$('#toast');t.textContent=msg;t.classList.add('show');
+  clearTimeout(t._t);t._t=setTimeout(()=>t.classList.remove('show'),1600);}
+
+async function jget(url){const r=await fetch(url);return r.json();}
+
+function pagesLabel(p){return p[0]===p[1]?`стр. ${p[0]}`:`стр. ${p[0]}–${p[1]}`;}
+
+async function doSearch(){
+  const q=$('#q').value.trim(); if(!q){$('#q').focus();return;}
+  if($('#mode').value==='keyword') return doKeyword(q);
+  const p=new URLSearchParams({q,k:$('#k').value||8});
+  if($('#ymin').value)p.set('year_min',$('#ymin').value);
+  if($('#ymax').value)p.set('year_max',$('#ymax').value);
+  if($('#paper').value)p.set('paper',$('#paper').value);
+  $('#results').innerHTML='<div class="spin">ищу…</div>';
+  const data=await jget('/api/search?'+p);
+  const hits=data.hits||[];
+  if(!hits.length){$('#results').innerHTML='<div class="empty">Ничего не найдено. Проверьте, что база проиндексирована.</div>';return;}
+  $('#results').innerHTML=hits.map(h=>card(h)).join('');
+}
+
+async function doKeyword(q){
+  const p=new URLSearchParams({q,k:200});
+  if($('#paper').value)p.set('paper',$('#paper').value);
+  $('#results').innerHTML='<div class="spin">ищу по слову…</div>';
+  const data=await jget('/api/keyword?'+p);
+  const docs=data.documents||[];
+  if(!data.total){$('#results').innerHTML=`<div class="empty">Слово «${esc(q)}» не встречается в корпусе.</div>`;return;}
+  const more=data.total>docs.length?` (показаны первые ${docs.length})`:'';
+  const head=`<div class="hint">«${esc(data.term)}» встречается в <b>${data.total}</b> документах${more}. `
+    +`Порядок — по числу фрагментов со словом. Учтите язык: «phycocyanin» и «фикоцианин» — разные слова.</div>`;
+  $('#results').innerHTML=head+docs.map(kwCard).join('');
+}
+function kwCard(d){
+  return `<div class="card hit">
+    <div class="top">
+      <span><span class="cite">[${esc(d.cite_key)}]</span>
+        <span class="src">· ${esc(d.filename)}${d.year?', '+d.year:''} · стр. ${d.page}</span></span>
+      <span class="score">${d.hits} фрагм.</span>
+    </div>
+    ${d.snippet?`<div class="text">${esc(d.snippet)}</div>`:''}
+    <div class="acts">
+      <button class="mini" onclick="openSource('${d.doc_id}',${d.page})">Открыть источник</button>
+    </div></div>`;
+}
+function onMode(){
+  const kw=$('#mode').value==='keyword';
+  $('#kfld').style.display=kw?'none':'';
+  $('#q').placeholder=kw
+    ?'Слово или фраза (точное совпадение по тексту): напр. phycocyanin'
+    :'Смысловой запрос (можно по-русски): напр. влияние температуры на выход биодизеля';
+}
+
+function card(h){
+  const pages=pagesLabel(h.pages);
+  const sec=h.section?`<span class="badge">${esc(h.section)}</span>`:'';
+  const cj=btoa(unescape(encodeURIComponent(JSON.stringify(h))));
+  return `<div class="card hit">
+    <div class="top">
+      <span><span class="cite">${esc(h.citation)}</span>
+        <span class="src">· [${esc(h.cite_key)}] ${esc(h.filename)}, ${pages}</span> ${sec}</span>
+      <span class="score">${(h.score*100).toFixed(1)}%</span>
+    </div>
+    <div class="text">${esc(h.text)}</div>
+    <div class="acts">
+      <button class="mini" onclick="openSource('${h.doc_id}',${h.pages[0]})">Открыть источник</button>
+      <button class="ghost mini" data-cj="${cj}" onclick="copyCite(this)">Копировать ссылку</button>
+      <button class="ghost mini" data-cj="${cj}" onclick="copyForClaude(this)">Копировать для Claude</button>
+    </div></div>`;
+}
+function unpack(btn){return JSON.parse(decodeURIComponent(escape(atob(btn.dataset.cj))));}
+function copyCite(btn){
+  const h=unpack(btn);
+  navigator.clipboard.writeText(`${h.citation} — ${h.filename}, ${pagesLabel(h.pages)}`);
+  toast('Ссылка скопирована');
+}
+function copyForClaude(btn){
+  const h=unpack(btn);
+  const block={cite_key:h.cite_key,citation:h.citation,filename:h.filename,
+    pages:h.pages,section:h.section,text:h.text};
+  navigator.clipboard.writeText('```json\n'+JSON.stringify(block,null,2)+'\n```');
+  toast('Фрагмент скопирован для вставки в чат');
+}
+
+async function openSource(ref,page){
+  cur.ref=ref;cur.page=page;
+  const data=await jget('/api/read?ref='+encodeURIComponent(ref)+'&pages='+page);
+  if(!data.found){toast('Источник не найден');return;}
+  $('#dTitle').textContent=`[${data.cite_key}] ${data.filename}`;
+  // границы страниц берём из статьи
+  const doc=DOCS[ref]||{};
+  cur.min=1;cur.max=doc.num_pages||page;
+  renderPage(data);
+  $('#drawer').classList.add('open');
+}
+function renderPage(data){
+  const pg=(data.pages&&data.pages[0])||{page:cur.page,text:''};
+  $('#dPage').textContent='стр. '+pg.page;
+  $('#dText').textContent=pg.text||'(на этой странице нет текстового слоя)';
+  $('#dImg').src='/api/page.png?doc='+encodeURIComponent(cur.ref)+'&page='+pg.page;
+  $('#dText').scrollTop=0;
+}
+async function flip(d){
+  const np=Math.min(cur.max,Math.max(cur.min,cur.page+d));
+  if(np===cur.page)return; cur.page=np;
+  const data=await jget('/api/read?ref='+encodeURIComponent(cur.ref)+'&pages='+np);
+  renderPage(data);
+}
+function closeDrawer(){$('#drawer').classList.remove('open');}
+
+let DOCS={};
+async function loadStats(){
+  const s=await jget('/api/stats');
+  $('#stats').innerHTML=
+    `<div class="stat"><span>Документов</span><b>${s.documents}</b></div>`+
+    `<div class="stat"><span>Фрагментов</span><b>${s.chunks}</b></div>`+
+    `<div class="stat"><span>Векторов</span><b>${s.vectors}</b></div>`+
+    `<div class="stat"><span>Годы</span><span>${Object.entries(s.by_year).map(([y,n])=>y+':'+n).join(', ')}</span></div>`;
+}
+async function loadDocs(){
+  const docs=await jget('/api/list');
+  DOCS={};docs.forEach(d=>DOCS[d.id]=d);
+  $('#doclist').innerHTML=docs.map(d=>
+    `<div class="doc" onclick="openSource('${d.id}',1)">
+       <span class="k">[${esc(d.cite_key)}]</span> ${d.year||'????'}
+       <div class="t">${esc((d.title||d.filename).slice(0,80))}</div></div>`).join('');
+}
+async function loadHealth(){
+  try{
+    const d=await jget('/api/check');
+    const bad=d.checks.filter(c=>c.status==='FAIL');
+    const warn=d.checks.filter(c=>c.status==='WARN');
+    const el=$('#health');const dot=el.querySelector('.dot');const t=el.querySelector('.ht');
+    if(bad.length){dot.className='dot err';t.textContent='ошибки: '+bad.length;}
+    else if(warn.length){dot.className='dot warn';t.textContent='предупреждений: '+warn.length;}
+    else{dot.className='dot ok';t.textContent='база в порядке';}
+    el.title=d.checks.map(c=>`${c.status} ${c.stage}: ${c.detail}`).join('\n');
+  }catch(e){}
+}
+function esc(s){return (s==null?'':String(s)).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));}
+
+$('#q').addEventListener('keydown',e=>{if(e.key==='Enter')doSearch();});
+document.addEventListener('keydown',e=>{
+  if(!$('#drawer').classList.contains('open'))return;
+  if(e.key==='Escape')closeDrawer();
+  if(e.key==='ArrowLeft')flip(-1);
+  if(e.key==='ArrowRight')flip(1);
+});
+loadStats();loadDocs();loadHealth();
+</script>
+</body>
+</html>

@@ -1,0 +1,32 @@
+name: tests
+
+# Прогон тестов ядра на Windows и macOS. Проверяет переносимость (пути по платформам,
+# поиск модели/Tesseract) на настоящем маке, которого нет под рукой.
+# Тесты написаны на чистых функциях и не тянут torch/chromadb — прогон быстрый.
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+  workflow_dispatch:        # можно запустить вручную кнопкой в GitHub
+
+jobs:
+  test:
+    name: tests (${{ matrix.os }})
+    strategy:
+      fail-fast: false      # пусть macOS досчитает, даже если Windows упал
+      matrix:
+        os: [windows-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Установить зависимости для тестов
+        run: python -m pip install --upgrade pip pytest PyMuPDF
+
+      - name: Прогнать тесты
+        run: python -m pytest tests -q
