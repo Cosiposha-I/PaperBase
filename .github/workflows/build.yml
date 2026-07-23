@@ -1,0 +1,57 @@
+name: build-desktop
+
+# Собирает установщики PaperBase (.exe для Windows, .dmg для macOS) через
+# electron-builder. Сборка .dmg возможна только на macOS — поэтому используется
+# GitHub Actions (macos-latest), а не локальная машина разработчика (Windows).
+#
+# Запуск: вручную (кнопка Run workflow) или по тегу вида v0.1.0.
+# Публикацию в GitHub Releases не настраиваем — собранные файлы забираются
+# как обычные Artifacts текущего запуска (см. вкладку Actions -> запуск -> Artifacts).
+
+on:
+  workflow_dispatch:
+  push:
+    tags:
+      - "v*"
+
+jobs:
+  build:
+    name: build (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    defaults:
+      run:
+        working-directory: desktop
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Установить npm-зависимости
+        run: npm ci
+
+      - name: Собрать (Windows)
+        if: runner.os == 'Windows'
+        run: npm run build:win
+
+      - name: Собрать (macOS)
+        if: runner.os == 'macOS'
+        # Без подписи кода: заставляем electron-builder не искать сертификат в
+        # системной связке ключей CI-раннера (там его и не может быть).
+        env:
+          CSC_IDENTITY_AUTO_DISCOVERY: "false"
+        run: npm run build:mac
+
+      - name: Загрузить артефакт
+        uses: actions/upload-artifact@v4
+        with:
+          name: paperbase-${{ matrix.os }}
+          path: |
+            desktop/dist/*.exe
+            desktop/dist/*.dmg
+          if-no-files-found: error

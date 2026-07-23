@@ -1,0 +1,44 @@
+{
+  "name": "paperbase-desktop",
+  "version": "0.1.0",
+  "private": true,
+  "description": "PaperBase — локальный поиск по корпусу научных PDF (десктоп-оболочка)",
+  "main": "src/main.js",
+  "scripts": {
+    "start": "electron .",
+    "fetch-python": "node scripts/fetch-python.js",
+    "build:win": "npm run fetch-python && electron-builder --win",
+    "build:mac": "npm run fetch-python && electron-builder --mac"
+  },
+  "devDependencies": {
+    "electron": "^33.0.0",
+    "electron-builder": "^26.0.0"
+  },
+  "build": {
+    "appId": "com.paperbase.app",
+    "productName": "PaperBase",
+    "directories": { "output": "dist" },
+    "files": ["src/**/*", "package.json"],
+    "extraResources": [
+      { "from": "../paperbase", "to": "app/paperbase" },
+      { "from": "../requirements.txt", "to": "app/requirements.txt" },
+      { "from": "../config.example.toml", "to": "app/config.example.toml" },
+      { "from": "resources/pyapp", "to": "pyapp" }
+    ],
+    "win": {
+      "target": "nsis",
+      "icon": "build/icon.ico"
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true
+    },
+    "mac": {
+      "target": "dmg",
+      "icon": "build/icon.icns",
+      "category": "public.app-category.education"
+    }
+  }
+}

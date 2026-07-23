@@ -1,0 +1,115 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<title>Установка PaperBase</title>
+<style>
+  :root {
+    --bg: #0f1216; --panel: #171b21; --text: #e6e9ee; --muted: #9aa4b2;
+    --accent: #5b9bd5; --accent2: #7bc47f; --err: #e06c6c; --border: #2a323c;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; height: 100vh; display: flex; flex-direction: column;
+    background: var(--bg); color: var(--text);
+    font: 15px/1.5 -apple-system, "Segoe UI", Roboto, Arial, sans-serif;
+    -webkit-user-select: none; user-select: none;
+  }
+  .screen { flex: 1; display: none; flex-direction: column; justify-content: center;
+    align-items: center; padding: 32px; text-align: center; gap: 16px; }
+  .screen.active { display: flex; }
+  h1 { font-size: 22px; margin: 0 0 4px; }
+  p.lead { color: var(--muted); max-width: 440px; margin: 0; }
+  button.primary {
+    background: var(--accent); color: #fff; border: none; border-radius: 10px;
+    padding: 14px 32px; font-size: 16px; font-weight: 600; cursor: pointer; margin-top: 8px;
+  }
+  button.primary:hover { filter: brightness(1.1); }
+  button.primary:disabled { opacity: .5; cursor: default; }
+  button.ghost {
+    background: transparent; color: var(--muted); border: 1px solid var(--border);
+    border-radius: 8px; padding: 8px 16px; font-size: 13px; cursor: pointer;
+  }
+  .progress-wrap { width: 420px; }
+  .bar-bg { width: 100%; height: 10px; border-radius: 6px; background: var(--panel);
+    border: 1px solid var(--border); overflow: hidden; }
+  .bar-fill { height: 100%; width: 0%; background: var(--accent);
+    transition: width .35s ease; }
+  .stage-text { margin-top: 12px; font-size: 14px; color: var(--text); min-height: 20px; }
+  .hint { color: var(--muted); font-size: 12px; margin-top: 4px; }
+  details { width: 420px; margin-top: 18px; text-align: left; }
+  summary { color: var(--muted); font-size: 12px; cursor: pointer; }
+  .log { background: var(--panel); border: 1px solid var(--border); border-radius: 8px;
+    padding: 8px 10px; max-height: 140px; overflow-y: auto; font: 11px/1.4 monospace;
+    color: var(--muted); margin-top: 8px; white-space: pre-wrap; }
+  .error-box { background: rgba(224,108,108,.12); border: 1px solid var(--err);
+    border-radius: 10px; padding: 16px 20px; max-width: 460px; color: var(--text); }
+  .check { color: var(--accent2); font-size: 40px; }
+  .folder-path { font: 13px monospace; color: var(--accent2); background: var(--panel);
+    border: 1px solid var(--border); border-radius: 6px; padding: 8px 12px;
+    max-width: 460px; word-break: break-all; }
+  .location-box { display: flex; align-items: center; gap: 10px; max-width: 460px;
+    background: var(--panel); border: 1px solid var(--border); border-radius: 8px;
+    padding: 10px 14px; margin-top: 4px; }
+  .location-box .path { flex: 1; text-align: left; font: 12px monospace; color: var(--muted);
+    word-break: break-all; }
+</style>
+</head>
+<body>
+
+  <!-- Экран 1: приветствие -->
+  <div class="screen active" id="screen-welcome">
+    <h1>Добро пожаловать в PaperBase</h1>
+    <p class="lead">
+      Сейчас программа один раз подготовит всё необходимое для работы:
+      скачает нужные компоненты и модель для поиска. Это займёт от 10 до 30 минут
+      в зависимости от скорости интернета — дальше делать ничего не нужно.
+    </p>
+    <div class="location-box">
+      <span class="path" id="install-path">…</span>
+      <button class="ghost" id="btn-choose-location">Изменить</button>
+    </div>
+    <div class="hint">Куда установить PaperBase (потребуется 4–7 ГБ места)</div>
+    <button class="primary" id="btn-start">Начать установку</button>
+  </div>
+
+  <!-- Экран 2: прогресс -->
+  <div class="screen" id="screen-progress">
+    <h1>Устанавливаю PaperBase…</h1>
+    <div class="progress-wrap">
+      <div class="bar-bg"><div class="bar-fill" id="bar-fill"></div></div>
+      <div class="stage-text" id="stage-text">Готовлю окружение…</div>
+      <div class="hint">Можно свернуть окно — установка продолжится в фоне.</div>
+      <details>
+        <summary>Показать подробности</summary>
+        <div class="log" id="log"></div>
+      </details>
+    </div>
+  </div>
+
+  <!-- Экран 3: ошибка -->
+  <div class="screen" id="screen-error">
+    <div class="error-box">
+      <h1>Не получилось установить</h1>
+      <p class="lead" id="error-text">Произошла ошибка.</p>
+    </div>
+    <button class="primary" id="btn-retry">Попробовать снова</button>
+  </div>
+
+  <!-- Экран 4: выбор папки со статьями -->
+  <div class="screen" id="screen-folder">
+    <div class="check">✓</div>
+    <h1>Установка завершена</h1>
+    <p class="lead">
+      Теперь укажите папку с вашими научными статьями (PDF, TXT, RTF) —
+      PaperBase проиндексирует их для поиска. Позже можно будет добавить
+      ещё темы или статьи.
+    </p>
+    <button class="primary" id="btn-choose-folder">Выбрать папку со статьями</button>
+    <div class="folder-path" id="folder-path" style="display:none"></div>
+    <button class="primary" id="btn-continue" style="display:none">Начать работу</button>
+  </div>
+
+  <script src="setup-renderer.js"></script>
+</body>
+</html>
