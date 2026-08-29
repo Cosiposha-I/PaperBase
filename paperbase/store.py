@@ -69,6 +69,15 @@ def _chunk_metadata(doc_id, cite_key, filename, year,
     }
 
 
+def _ulower(s):
+    """Понижение регистра с поддержкой Unicode — замена SQLite-функции lower().
+
+    SQLite lower() работает только с ASCII, поэтому кириллица остаётся как есть.
+    Регистрируется как ulower() в Store.__init__.
+    """
+    return s.lower() if isinstance(s, str) else s
+
+
 class Store:
     def __init__(self, cfg: Config):
         cfg.ensure_dirs()
@@ -77,6 +86,12 @@ class Store:
         # (доступ сериализуется блокировкой в server.py; ingest однопоточный).
         self.conn = sqlite3.connect(cfg.db_path, check_same_thread=False)
         self.conn.row_factory = sqlite3.Row
+        # Встроенная в SQLite lower() понижает регистр ТОЛЬКО у латиницы:
+        # lower('Андрюса') возвращает 'Андрюса' без изменений. Из-за этого поиск
+        # по слову слеп на кириллице с заглавной буквы — то есть на именах
+        # собственных («Андрюс», «Блэкман», «Иерусалимский» не находились вовсе).
+        # Регистрируем свою функцию: str.lower() в Python знает Unicode.
+        self.conn.create_function("ulower", 1, _ulower, deterministic=True)
         self.conn.execute("PRAGMA foreign_keys = ON")
         self.conn.execute("PRAGMA journal_mode = WAL")
         self.conn.executescript(SCHEMA)
@@ -270,21 +285,23 @@ class Store:
             paper_clause = f" AND c.doc_id IN ({','.join('?' * len(ids))})"
             params += ids
 
+        # ulower(), а не lower(): встроенная в SQLite версия не понижает кириллицу,
+        # из-за чего слова с заглавной буквы (имена собственные) не находились.
         total = self.conn.execute(
             f"SELECT COUNT(DISTINCT c.doc_id) FROM chunks c "
-            f"WHERE lower(c.text) LIKE ?{paper_clause}", params).fetchone()[0]
+            f"WHERE ulower(c.text) LIKE ?{paper_clause}", params).fetchone()[0]
         rows = self.conn.execute(
             "SELECT d.id, d.cite_key, d.filename, d.year, d.title, "
             "COUNT(*) AS hits, MIN(c.page_start) AS first_page "
             "FROM chunks c JOIN documents d ON d.id = c.doc_id "
-            f"WHERE lower(c.text) LIKE ?{paper_clause} "
+            f"WHERE ulower(c.text) LIKE ?{paper_clause} "
             "GROUP BY d.id ORDER BY hits DESC, d.year DESC LIMIT ?",
             params + [limit]).fetchall()
 
         out: list[dict] = []
         for r in rows:
             crow = self.conn.execute(
-                "SELECT text, page_start FROM chunks WHERE doc_id = ? AND lower(text) LIKE ? "
+                "SELECT text, page_start FROM chunks WHERE doc_id = ? AND ulower(text) LIKE ? "
                 "ORDER BY chunk_index LIMIT 1", (r["id"], like)).fetchone()
             snippet, page = "", r["first_page"]
             if crow:
