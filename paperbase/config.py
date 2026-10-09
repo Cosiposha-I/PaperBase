@@ -66,6 +66,7 @@ class Config:
 
     ocr_languages: str = "eng+rus"
     tesseract_cmd: str = ""
+    ocr_workers: int = 0            # параллельных процессов Tesseract; 0 = авто
 
     crossref_enabled: bool = True
     crossref_timeout: float = 5.0
@@ -175,6 +176,7 @@ def load_config() -> Config:
     ocr = data.get("ocr", {})
     cfg.ocr_languages = ocr.get("languages", cfg.ocr_languages)
     cfg.tesseract_cmd = ocr.get("tesseract_cmd", cfg.tesseract_cmd)
+    cfg.ocr_workers = int(ocr.get("workers", cfg.ocr_workers))
 
     cr = data.get("crossref", {})
     cfg.crossref_enabled = bool(cr.get("enabled", cfg.crossref_enabled))

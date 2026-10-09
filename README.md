@@ -63,6 +63,7 @@ Linux — `apt install tesseract-ocr`, языки `eng` и `rus`) и укажи�
 [ocr]
 languages = "eng+rus"
 tesseract_cmd = ""   # пусто — найдётся сам (PATH и типовые места установки)
+workers = 0          # страниц одновременно; 0 = авто (ядра − 2, не больше 16)
 ```
 
 `python -m paperbase check` показывает строку `tesseract  доступен`.

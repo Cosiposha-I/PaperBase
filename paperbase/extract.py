@@ -9,9 +9,12 @@ PDF — постранично (PyMuPDF) с OCR-fallback для сканов: т
 
 from __future__ import annotations
 
+import os
 import re
 import shutil
 import sys
+import threading
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -113,15 +116,29 @@ def _page_blocks(page: fitz.Page) -> list[str]:
     return blocks
 
 
-def _ocr_page(page: fitz.Page, languages: str) -> list[str]:
+def _ocr_page(doc: fitz.Document, index: int, languages: str, render_lock=None) -> list[str]:
+    import contextlib
+
     import pytesseract
     from PIL import Image
 
-    pix = page.get_pixmap(matrix=fitz.Matrix(300 / 72, 300 / 72), colorspace=fitz.csGRAY)
-    img = Image.frombytes("L", (pix.width, pix.height), pix.samples)
+    # PyMuPDF не потокобезопасен: под замком идёт ВСЁ обращение к документу — и загрузка
+    # страницы, и рендер. Сам Tesseract (внешний процесс) работает уже без замка, параллельно.
+    with render_lock or contextlib.nullcontext():
+        page = doc[index]
+        pix = page.get_pixmap(matrix=fitz.Matrix(300 / 72, 300 / 72), colorspace=fitz.csGRAY)
+        img = Image.frombytes("L", (pix.width, pix.height), pix.samples)
+        del pix, page
     raw = pytesseract.image_to_string(img, lang=languages)
     paragraphs = [_clean_block(p) for p in re.split(r"\n\s*\n", raw)]
     return [p for p in paragraphs if len(p) >= 2]
+
+
+def _ocr_workers(cfg: Config) -> int:
+    """Число параллельных процессов Tesseract: из конфига, 0 = авто (ядра − 2, не больше 16)."""
+    if cfg.ocr_workers > 0:
+        return cfg.ocr_workers
+    return max(1, min(16, (os.cpu_count() or 2) - 2))
 
 
 def extract_pages(pdf_path: Path, cfg: Config) -> ExtractResult:
@@ -130,12 +147,31 @@ def extract_pages(pdf_path: Path, cfg: Config) -> ExtractResult:
     ocr_needed_pages = 0
 
     with fitz.open(pdf_path) as doc:
+        to_ocr: list[int] = []  # индексы страниц без текстового слоя
         for i, page in enumerate(doc):
             p = Page(number=i + 1, blocks=_page_blocks(page))
             if len(p.text) < cfg.min_chars_per_page:
                 if ocr_available(cfg):
+                    to_ocr.append(i)
+                else:
+                    # OCR недоступен, а текста нет — помечаем страницу как пропущенную
+                    p.ocr_needed = True
+                    ocr_needed_pages += 1
+            result_pages.append(p)
+
+        if to_ocr:
+            # Tesseract работает только на CPU и почти однопоточен: сканы распознаём
+            # страницами параллельно, каждому процессу — один поток OpenMP.
+            os.environ.setdefault("OMP_THREAD_LIMIT", "1")
+            lock = threading.Lock()
+            workers = min(_ocr_workers(cfg), len(to_ocr))
+            with ThreadPoolExecutor(max_workers=workers) as pool:
+                futures = {i: pool.submit(_ocr_page, doc, i, cfg.ocr_languages, lock)
+                           for i in to_ocr}
+                for i, fut in futures.items():
+                    p = result_pages[i]
                     try:
-                        ocr_blocks = _ocr_page(page, cfg.ocr_languages)
+                        ocr_blocks = fut.result()
                         if ocr_blocks:
                             p.blocks = ocr_blocks
                             p.used_ocr = True
@@ -143,11 +179,6 @@ def extract_pages(pdf_path: Path, cfg: Config) -> ExtractResult:
                     except Exception:
                         p.ocr_needed = True
                         ocr_needed_pages += 1
-                else:
-                    # OCR недоступен, а текста нет — помечаем страницу как пропущенную
-                    p.ocr_needed = True
-                    ocr_needed_pages += 1
-            result_pages.append(p)
         num_pages = doc.page_count
 
     return ExtractResult(
