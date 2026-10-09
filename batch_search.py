@@ -9,10 +9,12 @@ filename/pages/section/text).
 (ответы, обзоры, таблицы) делает Claude поверх этого JSON, как и в остальном paperbase.
 
 Запуск из папки paperbase:
-    GPU:  .\.venv\Scripts\python.exe batch_search.py out.json
-    CPU:  python batch_search.py out.json
+    GPU:  .\.venv\Scripts\python.exe batch_search.py out.json [queries.json]
+    CPU:  python batch_search.py out.json [queries.json]
 
-Запросы — в списке QUERIES = [(тег, "текст запроса", k), ...]; правьте под задачу.
+Запросы берутся из файла queries.json (если указан вторым аргументом), формат:
+    [["тег", "текст запроса", 25], ...]
+Если файл не указан — используется встроенный список QUERIES ниже (правьте под задачу).
 """
 import json, sys, os
 
@@ -33,13 +35,25 @@ QUERIES = [
     ("standards", "стандарты качества EN 14214 ASTM D6751", 8),
 ]
 
+def load_queries(path):
+    """Запросы из JSON-файла: [["тег","текст",k], ...] либо {"тег":["текст",k]}."""
+    with open(path, encoding="utf-8") as f:
+        data = json.load(f)
+    if isinstance(data, dict):
+        return [(k, v[0], v[1]) for k, v in data.items()]
+    return [tuple(x) for x in data]
+
 def main():
     out_path = sys.argv[1] if len(sys.argv) > 1 else "batch_search_out.json"
+    queries = QUERIES
+    if len(sys.argv) > 2:                      # запросы из внешнего JSON-файла
+        queries = load_queries(sys.argv[2])
+        print(f"запросов из файла: {len(queries)}", file=sys.stderr)
     cfg = load_config()
     with Store(cfg) as store:
         emb = Embedder(cfg)
         out = {}
-        for key, q, k in QUERIES:
+        for key, q, k in queries:
             hits = search(store, emb, q, k=k)
             out[key] = {"query": q, "hits": [h.to_dict() for h in hits]}
             print(f"[{key}] {len(hits)} hits", file=sys.stderr)
