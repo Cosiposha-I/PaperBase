@@ -1,57 +1,176 @@
 name: build-desktop
 
-# Собирает установщики PaperBase (.exe для Windows, .dmg для macOS) через
-# electron-builder. Сборка .dmg возможна только на macOS — поэтому используется
-# GitHub Actions (macos-latest), а не локальная машина разработчика (Windows).
+# Собирает установщики PaperBase и публикует их в GitHub Releases.
 #
-# Запуск: вручную (кнопка Run workflow) или по тегу вида v0.1.0.
-# Публикацию в GitHub Releases не настраиваем — собранные файлы забираются
-# как обычные Artifacts текущего запуска (см. вкладку Actions -> запуск -> Artifacts).
+# Запускается при каждом изменении кода в main (и вручную кнопкой Run workflow).
+# Имена файлов постоянные, поэтому ссылка
+#   https://github.com/<владелец>/PaperBase/releases/latest/download/PaperBase-Setup.exe
+# всегда ведёт на свежую сборку — её и даём в README.
+#
+# Порядок: тесты ядра -> сборка -> самопроверка собранной копии -> (Windows) тихая
+# установка в папку с кириллицей и пробелами, проверка, тихое удаление -> публикация.
+# .dmg собирается только на macOS, поэтому сборка идёт на двух машинах.
 
 on:
   workflow_dispatch:
   push:
-    tags:
-      - "v*"
+    branches: [main]
+    paths-ignore:
+      - "**.md"
+      - ".github/workflows/tests.yml"
+
+# одна сборка на ветку: новая отменяет устаревшую
+concurrency:
+  group: build-desktop-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  PYTHONUTF8: "1"            # консоль CI — cp1252, кириллица в выводе иначе роняет Python
 
 jobs:
   build:
     name: build (${{ matrix.os }})
     strategy:
-      fail-fast: false
+      fail-fast: false       # пусть Windows соберётся, даже если macOS упал
       matrix:
         os: [windows-latest, macos-latest]
     runs-on: ${{ matrix.os }}
-    defaults:
-      run:
-        working-directory: desktop
     steps:
       - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Тесты ядра
+        run: |
+          python -m pip install --upgrade pip pytest PyMuPDF pytesseract Pillow
+          python -m pytest tests -q
 
       - uses: actions/setup-node@v4
         with:
           node-version: "20"
 
       - name: Установить npm-зависимости
+        working-directory: desktop
         run: npm ci
 
-      - name: Собрать (Windows)
+      # сборка заканчивается scripts/verify-package.js: код в сборке = исходникам,
+      # метка сборки = собираемому коммиту, встроенный Python компилирует пакет
+      - name: Собрать и проверить (Windows)
         if: runner.os == 'Windows'
+        working-directory: desktop
         run: npm run build:win
 
-      - name: Собрать (macOS)
+      - name: Собрать и проверить (macOS)
         if: runner.os == 'macOS'
-        # Без подписи кода: заставляем electron-builder не искать сертификат в
-        # системной связке ключей CI-раннера (там его и не может быть).
+        working-directory: desktop
         env:
-          CSC_IDENTITY_AUTO_DISCOVERY: "false"
+          CSC_IDENTITY_AUTO_DISCOVERY: "false"   # подписи нет — не искать сертификат
         run: npm run build:mac
+
+      - name: Тихая установка, проверка, тихое удаление (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          $setup = Resolve-Path "desktop/dist/PaperBase-Setup.exe"
+          $dir = Join-Path $env:RUNNER_TEMP "Тест установки PaperBase"
+
+          # /D= обязан идти последним и без кавычек — так требует NSIS
+          $p = Start-Process -FilePath $setup -ArgumentList "/S", "/D=$dir" -Wait -PassThru
+          if ($p.ExitCode -ne 0) { throw "установщик вернул код $($p.ExitCode)" }
+
+          $must = @(
+            "PaperBase.exe",
+            "Uninstall PaperBase.exe",
+            "resources\build-info.json",
+            "resources\app\paperbase\extract.py",
+            "resources\app\requirements.txt",
+            "resources\pyapp\python.exe"
+          )
+          foreach ($f in $must) {
+            if (-not (Test-Path (Join-Path $dir $f))) { throw "после установки нет файла: $f" }
+          }
+
+          # установленная копия несёт код именно этого коммита
+          $info = Get-Content (Join-Path $dir "resources\build-info.json") -Raw -Encoding utf8 | ConvertFrom-Json
+          $want = $env:GITHUB_SHA.Substring(0, 7)
+          if ($info.commit -ne $want) { throw "в установленной копии коммит $($info.commit), ожидался $want" }
+
+          # встроенный Python установленной копии запускается и компилирует пакет
+          $py = Join-Path $dir "resources\pyapp\python.exe"
+          & $py -B -X "pycache_prefix=$env:RUNNER_TEMP\pb-pyc" -m compileall -q (Join-Path $dir "resources\app\paperbase")
+          if ($LASTEXITCODE -ne 0) { throw "установленный Python не скомпилировал пакет" }
+          Write-Host "установка проверена: версия $($info.version), коммит $($info.commit)"
+
+          # удаление: _?= заставляет деинсталлятор NSIS дождаться конца, а не уйти в фон
+          $u = Start-Process -FilePath (Join-Path $dir "Uninstall PaperBase.exe") -ArgumentList "/S", "_?=$dir" -Wait -PassThru
+          if ($u.ExitCode -ne 0) { throw "деинсталлятор вернул код $($u.ExitCode)" }
+          if (Test-Path (Join-Path $dir "PaperBase.exe")) { throw "после удаления остался PaperBase.exe" }
+          Write-Host "удаление проверено"
 
       - name: Загрузить артефакт
         uses: actions/upload-artifact@v4
         with:
           name: paperbase-${{ matrix.os }}
           path: |
-            desktop/dist/*.exe
-            desktop/dist/*.dmg
+            desktop/dist/PaperBase-Setup.exe
+            desktop/dist/PaperBase.dmg
           if-no-files-found: error
+
+  release:
+    name: publish release
+    needs: build
+    # публикуем то, что собралось: сбой macOS не должен прятать готовый .exe
+    if: ${{ !cancelled() && github.ref == 'refs/heads/main' }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/download-artifact@v4
+        with:
+          path: out
+          merge-multiple: true
+
+      - name: Опубликовать в Releases
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          ls -la out || true
+          test -f out/PaperBase-Setup.exe || { echo "нет PaperBase-Setup.exe — публиковать нечего"; exit 1; }
+
+          VER=$(node -p "require('./desktop/package.json').version")
+          TAG="v$VER"
+          SHORT=${GITHUB_SHA::7}
+          DATE=$(date -u +%Y-%m-%d)
+
+          {
+            echo "Сборка из коммита $SHORT от $DATE (UTC)."
+            echo
+            echo "- **Windows:** PaperBase-Setup.exe"
+            if [ -f out/PaperBase.dmg ]; then
+              echo "- **macOS:** PaperBase.dmg"
+            else
+              echo "- macOS: в этой сборке .dmg не собрался"
+            fi
+            echo
+            echo "Установка: см. раздел «Установка» в README. Новая версия ставится поверх"
+            echo "старой; скачанная модель, окружение и базы статей при этом не трогаются."
+            echo
+            echo "Какая сборка установлена, видно в меню PaperBase → «О программе»."
+          } > notes.md
+
+          # тег версии переезжает на свежий коммит; релиз один на версию, файлы заменяются
+          git tag -f "$TAG" "$GITHUB_SHA"
+          git push -f origin "$TAG"
+
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            gh release edit "$TAG" --title "PaperBase $VER" --notes-file notes.md --latest
+          else
+            gh release create "$TAG" --title "PaperBase $VER" --notes-file notes.md --latest
+          fi
+          gh release upload "$TAG" out/* --clobber

@@ -116,7 +116,17 @@ function isThemeIndexed(theme) {
   return fs.existsSync(path.join(themeDataDir(theme), "corpus.db"));
 }
 
+/** Метка сборки (версия, коммит, дата) — пишется scripts/write-build-info.js. */
+function buildInfo() {
+  try {
+    return JSON.parse(fs.readFileSync(path.join(resourcesRoot(), "build-info.json"), "utf8"));
+  } catch {
+    return { version: app.getVersion(), commit: "dev", dirty: false, built: "" };
+  }
+}
+
 module.exports = {
+  buildInfo,
   resourcesRoot, portablePythonPath, runtimeDir, runtimePython,
   pyappSourceDir, setupDoneMarker, isSetupDone,
   defaultInstallRoot, installRoot, setInstallRoot,

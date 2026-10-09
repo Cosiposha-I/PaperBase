@@ -3,3 +3,4 @@ dist/
 # Портативный Python — скачивается npm run fetch-python перед сборкой,
 # отдельно под каждую платформу; в репозиторий не кладём (десятки МБ бинарников).
 resources/pyapp/
+resources/build-info.json

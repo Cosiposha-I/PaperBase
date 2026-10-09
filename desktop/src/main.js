@@ -17,7 +17,7 @@ const fs = require("fs");
 const {
   isSetupDone, installRoot, setInstallRoot, defaultInstallRoot,
   readCorpora, writeCorpora, themeDataDir, isThemeIndexed,
-  runtimePython, pyappSourceDir,
+  runtimePython, pyappSourceDir, buildInfo,
 } = require("./paths");
 const { runFirstTimeSetup } = require("./installer");
 const { startServer } = require("./server");
@@ -148,10 +148,31 @@ async function promptNewTheme() {
   await switchToTheme(theme);
 }
 
+/** Какая именно сборка запущена: по этой строке видно, свежий ли код внутри. */
+function showAbout() {
+  const b = buildInfo();
+  dialog.showMessageBox(mainWindow || undefined, {
+    type: "info",
+    title: "О программе",
+    message: `PaperBase ${b.version}`,
+    detail: `Сборка ${b.commit}${b.dirty ? " (с незакоммиченными правками)" : ""}` +
+      (b.built ? `\nСобрана: ${b.built}` : "") +
+      `\nДанные и окружение: ${installRoot()}`,
+    buttons: ["OK"],
+  });
+}
+
 function buildAppMenu() {
   const themes = readCorpora();
   const template = [
-    { label: "PaperBase", submenu: [{ role: "quit", label: "Выход" }] },
+    {
+      label: "PaperBase",
+      submenu: [
+        { label: "О программе…", click: () => showAbout() },
+        { type: "separator" },
+        { role: "quit", label: "Выход" },
+      ],
+    },
     {
       label: "Темы",
       submenu: [

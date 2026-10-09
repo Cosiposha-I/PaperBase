@@ -1,14 +1,17 @@
 {
   "name": "paperbase-desktop",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "private": true,
   "description": "PaperBase — локальный поиск по корпусу научных PDF (десктоп-оболочка)",
   "main": "src/main.js",
   "scripts": {
     "start": "electron .",
     "fetch-python": "node scripts/fetch-python.js",
-    "build:win": "npm run fetch-python && electron-builder --win",
-    "build:mac": "npm run fetch-python && electron-builder --mac"
+    "build-info": "node scripts/write-build-info.js",
+    "prebuild": "npm run fetch-python && npm run build-info",
+    "build:win": "npm run prebuild && electron-builder --win && node scripts/verify-package.js",
+    "build:mac": "npm run prebuild && electron-builder --mac && node scripts/verify-package.js",
+    "verify": "node scripts/verify-package.js"
   },
   "devDependencies": {
     "electron": "^33.0.0",
@@ -17,13 +20,38 @@
   "build": {
     "appId": "com.paperbase.app",
     "productName": "PaperBase",
-    "directories": { "output": "dist" },
-    "files": ["src/**/*", "package.json"],
+    "directories": {
+      "output": "dist"
+    },
+    "files": [
+      "src/**/*",
+      "package.json"
+    ],
     "extraResources": [
-      { "from": "../paperbase", "to": "app/paperbase" },
-      { "from": "../requirements.txt", "to": "app/requirements.txt" },
-      { "from": "../config.example.toml", "to": "app/config.example.toml" },
-      { "from": "resources/pyapp", "to": "pyapp" }
+      {
+        "from": "../paperbase",
+        "to": "app/paperbase",
+        "filter": [
+          "**/*",
+          "!**/__pycache__/**"
+        ]
+      },
+      {
+        "from": "../requirements.txt",
+        "to": "app/requirements.txt"
+      },
+      {
+        "from": "../config.example.toml",
+        "to": "app/config.example.toml"
+      },
+      {
+        "from": "resources/pyapp",
+        "to": "pyapp"
+      },
+      {
+        "from": "resources/build-info.json",
+        "to": "build-info.json"
+      }
     ],
     "win": {
       "target": "nsis",
@@ -33,12 +61,14 @@
       "oneClick": false,
       "perMachine": false,
       "allowToChangeInstallationDirectory": true,
-      "createDesktopShortcut": true
+      "createDesktopShortcut": true,
+      "artifactName": "PaperBase-Setup.${ext}"
     },
     "mac": {
       "target": "dmg",
       "icon": "build/icon.icns",
-      "category": "public.app-category.education"
+      "category": "public.app-category.education",
+      "artifactName": "PaperBase.${ext}"
     }
   }
 }

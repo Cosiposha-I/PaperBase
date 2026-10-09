@@ -16,9 +16,14 @@ Electron — только оболочка вокруг Python-ядра `paperba
 - Выбор места установки (вся программа, не только «тяжёлые данные») и папки со
   статьями — нативные диалоги.
 - Корректное завершение Python-процесса при закрытии окна.
-- CI (`.github/workflows/build.yml`): собирает `.exe` и `.dmg` на `windows-latest` +
-  `macos-latest` (macOS иначе собрать нельзя — electron-builder требует mac для dmg),
-  результат — Artifacts запуска (без публикации в Releases).
+- CI (`.github/workflows/build.yml`): при каждом изменении кода в `main` собирает
+  `.exe` и `.dmg` на `windows-latest` + `macos-latest` и публикует их в Releases под
+  постоянными именами (`PaperBase-Setup.exe`, `PaperBase.dmg`). До публикации идут
+  тесты ядра, самопроверка сборки (`scripts/verify-package.js`: код в сборке равен
+  исходникам, метка сборки, встроенный Python) и на Windows — тихая установка в папку
+  с кириллицей и пробелами, проверка файлов и тихое удаление.
+- Метка сборки (`scripts/write-build-info.js`): версия, коммит и дата кладутся в
+  ресурсы и показываются в меню «PaperBase → О программе».
 
 **Не сделано в этой итерации:**
 - Иконка приложения (`build/icon.ico` / `.icns`) — не добавлена, electron-builder
